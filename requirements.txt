@@ -2,6 +2,6 @@ boto3==1.40.53
 inference_sdk==0.58.2
 numpy==2.3.4
 pandas==2.3.3
-Pillow==12.0.0
+Pillow==11.0.0
 python-dotenv==1.1.1
 streamlit==1.50.0
