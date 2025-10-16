@@ -14,11 +14,13 @@ st.sidebar.image('logo.png')
 st.markdown("""
 <style>
     div[data-testid="stSidebarUserContent"] img {
-        background: #ffffff;
-        border-radius: 20px;
-        border: thick;
-        border-style: inset;
-        border-color: black;
+        background: #ffffff; /* This is the image's background, not the border's */
+        border-radius: 20px; /* Adjust this value for desired roundness */
+        padding: 3px; /* Creates space for the border effect */
+        background-clip: padding-box; /* Ensures the background gradient only covers the padding area */
+        border: 3px solid transparent; /* A transparent border to define the border's space */
+        background-image: linear-gradient(to right, darkgrey, white); /* This is the actual gradient for the "border" */
+        background-origin: border-box; /* Makes the background start from the border edge */
     }
 </style>
 """, unsafe_allow_html=True)
