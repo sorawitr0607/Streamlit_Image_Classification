@@ -220,6 +220,38 @@ def main():
     
     
     if st.session_state.workflow_state_2 == "select":
+        st.subheader("Welcome to :orange[Accident Severity] App", divider="green")
+        st.markdown('This application uses an advanced AI model to analyze images of vehicle accidents')
+        st.markdown('and classify the severity of the damage, providing a **quick initial assessment.** 💥')
+        
+        st.subheader("How to Use", divider="blue")
+        st.markdown('1. **Upload Image**: *Begin by selecting and uploading a clear photo of the vehicle accident. For best results, capture the full extent of the damage.*')
+        st.markdown("2. **AI Analysis**: *The application will instantly process the image, using a trained model to evaluate the key visual indicators of damage.*")
+        st.markdown('3. **Get the Result**: *The app will display the assessed damage level as a label along with a :green[confidence score].*')
+        
+        st.markdown("<span style='font-size: 24px;'>**<u>Example Output**<u> </span>", unsafe_allow_html=True)
+        # Assuming your image path is correct for your local run
+        try:
+            st.image('tutorial_robo.png', width=800)
+        except FileNotFoundError:
+            st.warning("Warning: Tutorial image not found at the specified path.")
+        
+        
+        st.subheader("What the App Can Detect", divider="blue")
+        st.markdown('Our model is trained to classify accident damage into three distinct levels.')
+        
+        # Using st.markdown with HTML for more style control
+        st.markdown("<p style='font-weight: bold; color: green;'>✅ Mild</p>", unsafe_allow_html=True)
+        st.markdown("<p style='padding-left: 20px;'>Minor cosmetic damage, such as scratches, small dents, or cracked lights. The vehicle's core structure appears intact and it is likely still drivable.</p>", unsafe_allow_html=True)
+        
+        st.markdown("<p style='font-weight: bold; color: orange;'>⚠️ Moderate</p>", unsafe_allow_html=True)
+        st.markdown("<p style='padding-left: 20px;'>Visible and significant damage to the vehicle's body, such as large dents, a crumpled bumper, or deployed airbags. The vehicle may not be safely drivable.</p>", unsafe_allow_html=True)
+        
+        st.markdown("<p style='font-weight: bold; color: red;'>💥 Severe</p>", unsafe_allow_html=True)
+        st.markdown("<p style='padding-left: 20px;'>Extensive structural damage to the vehicle's frame. The car is clearly inoperable and likely considered a total loss. This level indicates a major collision where the passenger cabin may be compromised.</p>", unsafe_allow_html=True)
+        
+        
+        st.header(":orange[!! Try Me] ⬇️⬇️⬇️")
         st.subheader("Select an Image", divider="green")
         uploaded_file = st.file_uploader(
             "Choose an image file", type=["jpg", "jpeg", "png"]
