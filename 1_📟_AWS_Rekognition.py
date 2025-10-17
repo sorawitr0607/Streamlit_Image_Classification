@@ -45,6 +45,7 @@ st.sidebar.markdown(
 - [Streamlit Documentation](https://docs.streamlit.io/)
 - [Cheat sheet](https://docs.streamlit.io/library/cheatsheet)
 - [AWS Custom Label Doc](https://docs.aws.amazon.com/rekognition/latest/customlabels-dg/what-is.html)
+- [Boto3 Documentation](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/quickstart.html)
 """
 )
 st.sidebar.image('AWS-Logo.png') 
