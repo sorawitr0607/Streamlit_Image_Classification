@@ -4,8 +4,9 @@ import boto3
 from PIL import Image, ImageDraw, ImageFont
 import io
 import json
+import time
 import pandas as pd
-
+from botocore.exceptions import ClientError
 
 #######################################################
 # --- Side Bar Config ---
@@ -58,10 +59,62 @@ AWS_REGION = st.secrets["AWS_REGION"]
 S3_BUCKET_NAME = st.secrets["S3_BUCKET_NAME"] 
 LAMBDA_FUNCTION_NAME = st.secrets["LAMBDA_FUNCTION_NAME"] 
 
+PROJECT_ARN = st.secrets["PROJECT_ARN"]
+MODEL_ARN = st.secrets["MODEL_ARN"]
+VERSION_NAME = st.secrets["VERSION_NAME"]
+MIN_INFERENCE_UNITS = 1
 
 #######################################################
 # --- Helper Functions ---
-
+def start_model(project_arn, model_arn, version_name, min_inference_units):
+    """Starts the model and waits for it to be running."""
+    try:
+        print('Starting model: ' + model_arn)
+        rekog_client.start_project_version(ProjectVersionArn=model_arn, MinInferenceUnits=min_inference_units)
+        
+        # Wait for the model to be in the running state (this is a blocking call)
+        project_version_running_waiter = rekog_client.get_waiter('project_version_running')
+        project_version_running_waiter.wait(ProjectArn=project_arn, VersionNames=[version_name])
+        
+        return True, "Model started successfully."
+    except Exception as e:
+        print(e)
+        return False, str(e)
+    
+def stop_model(project_arn, model_arn, version_name):
+    """Stops the model and waits for it to be stopped."""
+    try:
+        print('Stopping model:' + model_arn)
+        rekog_client.stop_project_version(ProjectVersionArn=model_arn)
+        
+        # Wait for the model to be in the stopped state (this is a blocking call)
+        project_version_stopped_waiter = rekog_client.get_waiter('project_version_stopped')
+        project_version_stopped_waiter.wait(ProjectArn=project_arn, VersionNames=[version_name])
+        
+        return True, "Model stopped successfully."
+    except Exception as e:
+        print(e)
+        return False, str(e)
+    
+@st.cache_data(ttl=15) # Cache the status for 15 seconds
+def get_model_status(project_arn, version_name):
+    """Fetches the current status of the model from AWS."""
+    try:
+        describe_response = rekog_client.describe_project_versions(
+            ProjectArn=project_arn,
+            VersionNames=[version_name]
+        )
+        if not describe_response['ProjectVersionDescriptions']:
+            return 'NOT_FOUND', 'Model version not found.'
+        
+        model = describe_response['ProjectVersionDescriptions'][0]
+        return model['Status'], model.get('StatusMessage', 'No status message.')
+    except ClientError as e:
+        st.error(f"Error fetching status: {e}")
+        return 'ERROR', str(e)
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {e}")
+        return 'ERROR', str(e)
 def upload_to_s3(file_obj, bucket, object_name):
     """Uploads a file to a specific subfolder in an S3 bucket."""
     # 1. Define the full path including the subfolder
@@ -252,31 +305,151 @@ def click_button():
 
 def reset_workflow():
     """Resets the app to its initial state"""
-    st.session_state.workflow_state = "upload"
+    st.session_state.workflow_state = "model_status"
     st.session_state.uploaded_file = None
     st.session_state.analysis_results = None
     st.session_state.annotated_image = None
     st.session_state.button_analyze = False
     st.session_state.button_analyze_disabled = False
+    st.session_state.processing_action = None
+    st.session_state.model_status = None
+
+def overlay(title: str, subtitle: str):
+    st.markdown(
+        f"""
+        <style>
+          ._overlay {{
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: rgb(13,17,23);     /* match dark theme */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+          }}
+          ._spinner {{
+            width: 22px; height: 22px;
+            border: 3px solid rgba(255,255,255,0.25);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+          }}
+          @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+          ._title {{ color: #f2a602; font-size: 2.2rem; font-weight: 800; }}
+          ._sub {{ color: #fff; opacity: .9; font-size: 0.95rem; text-align:center; max-width: 760px; }}
+        </style>
+        <div class="_overlay" id="transition-root">
+          <div class="_title">{title}</div>
+          <div class="_spinner"></div>
+          <div class="_sub">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 #######################################################
 # --- Main App Logic ---
 
 def main():
-
-    st.header(":streamlit: :orange[AWS] Image Analysis with Rekognition",divider='orange')
-
-    # Initialize session state to manage workflow
+    # --- init ---
     if 'workflow_state' not in st.session_state:
-        st.session_state.workflow_state = "upload"
+        st.session_state.workflow_state = "model_status"
+    if 'uploaded_file' not in st.session_state:
         st.session_state.uploaded_file = None
+    if 'analysis_results' not in st.session_state:
         st.session_state.analysis_results = None
+    if 'annotated_image' not in st.session_state:
         st.session_state.annotated_image = None
+    if 'button_analyze' not in st.session_state:
         st.session_state.button_analyze = False
+    if 'button_analyze_disabled' not in st.session_state:
         st.session_state.button_analyze_disabled = False
-    
-    
-    
+    if 'processing_action' not in st.session_state:
+        st.session_state.processing_action = None
+    if 'model_status' not in st.session_state:
+        st.session_state.model_status = None
+    # --- End of init ---
+
+    root = st.empty()
+
+    # 2) Router — transition state
+    if st.session_state.processing_action:
+        # Draw overlay immediately so old UI is fully hidden
+        if st.session_state.processing_action == 'start':
+            overlay("Starting AWS Model...", "Starting model... It might take up to 30 minutes to start running.")
+            # Do your long start call here
+            # time.sleep(5)  # simulate
+            success, msg = stop_model(PROJECT_ARN, MODEL_ARN, VERSION_NAME)
+            success, msg = True, "Mock start complete"
+            st.session_state.mock_status = "RUNNING"  # mock transition
+        else:  # 'stop'
+            overlay("Stopping AWS Model...", "Stopping model... This may take a few minutes.")
+            success, msg = stop_model(PROJECT_ARN, MODEL_ARN, VERSION_NAME)
+
+        # Optional brief confirmation overlay
+        overlay(
+            "Starting AWS Model..." if st.session_state.processing_action == 'start' else "Stopping AWS Model...",
+            ("✅ " if success else "❌ ") + f"{msg}. Refreshing page..."
+        )
+        st.cache_data.clear()
+        time.sleep(1.2)
+
+        # Common transition logic
+        st.session_state.processing_action = None
+        st.rerun()
+        return
+
+    # 3) Router — MAIN UI
+    else:
+        with root.container():
+            # *** header only on main page ***
+            st.header(":streamlit: :orange[AWS] Image Analysis with Rekognition", divider='orange')
+
+            if st.session_state.workflow_state == "model_status":
+                st.subheader("AWS Rekognition :green[Model Status]", divider="green")
+
+                status, message = get_model_status(PROJECT_ARN, VERSION_NAME)
+                st.session_state.model_status = status
+                is_transitioning_api = status in ['STARTING', 'STOPPING']
+
+                if st.button("Refresh Status 🔄", disabled=is_transitioning_api):
+                    st.cache_data.clear()
+                    st.rerun()
+
+                if status == 'RUNNING':
+                    st.success(f"**Status:** {status} 🟢")
+                    if st.button("Proceed to Image Analysis ➡️", type="primary", disabled=is_transitioning_api):
+                        st.session_state.workflow_state = "upload"
+                        st.rerun()
+                elif status == 'STOPPED':
+                    st.info(f"**Status:** {status} 🔴")
+                elif is_transitioning_api:
+                    st.warning(f"**Status:** {status} 🟡")
+                    st.info(f"Model is {status.lower()}... This may take several minutes. Please click 'Refresh Status' periodically.")
+                else:
+                    st.error(f"**Status:** {status} ⚠️")
+                    st.error(f"**Message:** {message}")
+
+                st.subheader("Model Controls", divider="blue")
+                current_status = st.session_state.model_status
+
+                if current_status == 'RUNNING':
+                    st.info('The Model is still running. You can stop it to prevent unexpected costs.')
+                    if st.button("Stop Model", type="primary", disabled=is_transitioning_api):
+                        st.session_state.processing_action = 'stop'
+                        st.rerun()
+                elif current_status == 'STOPPED':
+                    st.info('You need to Press Start Model first, before proceed into Main Function')
+                    if st.button("Start Model", type="primary", disabled=is_transitioning_api):
+                        st.session_state.processing_action = 'start'
+                        st.rerun()
+                elif is_transitioning_api:
+                    st.info("Model is currently in a transition state. Please wait for the operation to complete and then click 'Refresh Status'.")
+                else:
+                    st.error("Model is in an unknown or failed state. Please check the AWS console for more details.")
     if st.session_state.workflow_state == "upload":
         st.subheader("Welcome to :green[Driver Behavior Analysis] App", divider="green")
         st.markdown('This application leverages a powerful AI model to analyze images of drivers and classify their behavior.')
@@ -340,7 +513,7 @@ def main():
             with st.spinner("Uploading to S3..."):
                 # 1. Upload to S3
                 s3_uri = upload_to_s3(io.BytesIO(file_bytes), S3_BUCKET_NAME, file.name)
-                st.success(f"Successfully uploaded to {s3_uri}")
+
             if s3_uri:
                 
                 # 2. Invoke Lambda for analysis
@@ -393,6 +566,11 @@ try:
         region_name=AWS_REGION,
     )
 
+    try:
+        rekog_client = boto3.client('rekognition')
+    except Exception as e:
+        st.error(f"Error initializing Rekognition client: {e}")
+        st.stop()
     lambda_client = boto3.client(
         "lambda",
         aws_access_key_id=AWS_ACCESS_KEY_ID,
