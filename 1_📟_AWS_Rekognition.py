@@ -567,7 +567,7 @@ try:
     )
 
     try:
-        rekog_client = boto3.client('rekognition')
+        rekog_client = boto3.client('rekognition',region_name=AWS_REGION)
     except Exception as e:
         st.error(f"Error initializing Rekognition client: {e}")
         st.stop()
