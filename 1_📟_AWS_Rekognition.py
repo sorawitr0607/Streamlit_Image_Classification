@@ -463,7 +463,7 @@ def main():
         st.markdown("<span style='font-size: 24px;'>**<u>Example Output**<u> </span>", unsafe_allow_html=True)
         # Assuming your image path is correct for your local run
         try:
-            st.image('tutorial.png', width=800)
+            st.image('tutorial.png', width=1000)
         except FileNotFoundError:
             st.warning("Warning: Tutorial image not found at the specified path.")
         
