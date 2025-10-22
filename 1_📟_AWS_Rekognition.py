@@ -62,7 +62,7 @@ LAMBDA_FUNCTION_NAME = st.secrets["LAMBDA_FUNCTION_NAME"]
 PROJECT_ARN = st.secrets["PROJECT_ARN"]
 MODEL_ARN = st.secrets["MODEL_ARN"]
 VERSION_NAME = st.secrets["VERSION_NAME"]
-MIN_INFERENCE_UNITS = 1
+MIN_INFERENCE_UNITS = st.secrets["MIN_INFERENCE_UNITS"]
 
 #######################################################
 # --- Helper Functions ---
@@ -382,8 +382,8 @@ def main():
             overlay("Starting AWS Model...", "Starting model... It might take up to 30 minutes to start running.")
             # Do your long start call here
             # time.sleep(5)  # simulate
-            success, msg = stop_model(PROJECT_ARN, MODEL_ARN, VERSION_NAME)
-            success, msg = True, "Mock start complete"
+            # success, msg = True, "Mock start complete"
+            success, msg = start_model(PROJECT_ARN, MODEL_ARN, VERSION_NAME,MIN_INFERENCE_UNITS)
             st.session_state.mock_status = "RUNNING"  # mock transition
         else:  # 'stop'
             overlay("Stopping AWS Model...", "Stopping model... This may take a few minutes.")
